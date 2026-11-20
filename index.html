@@ -93,7 +93,10 @@ supported().then(ok=>{if(!ok){startBtn.style.display='none';msg.textContent='AR 
 document.getElementById('ui').onclick=()=>startBtn.onclick();
 startBtn.onclick=async()=>{
   try{
-    session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:document.body}});
+    const cfgs=[{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay','local-floor'],domOverlay:{root:document.body}},{requiredFeatures:['hit-test']},{optionalFeatures:['hit-test','local-floor']},{}];
+    let lastErr;for(const c of cfgs){try{session=await navigator.xr.requestSession('immersive-ar',c);break}catch(e){lastErr=e}}
+    if(!session)throw lastErr;
+    noHit=session.enabledFeatures?!session.enabledFeatures.includes('hit-test'):false;
     await renderer.xr.setSession(session);
     document.getElementById('ui').style.display='none';hint.style.display='block';
     skel.visible=false;placed=false;
@@ -103,7 +106,7 @@ startBtn.onclick=async()=>{
   }catch(e){msg.textContent='Could not start AR: '+e.message}
 };
 let lastViewer=new THREE.Vector3();
-let stable=0;
+let stable=0,noHit=false;
 function onSelect(){
   if(!reticle.visible)return;
   const p=new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
@@ -114,10 +117,12 @@ renderer.setAnimationLoop((t,frame)=>{
   if(frame){
     const ref=renderer.xr.getReferenceSpace(),s=renderer.xr.getSession();
     const vp=frame.getViewerPose(ref);if(vp){const q=vp.transform.position;lastViewer.set(q.x,q.y,q.z)}
-    if(!hitSource&&!reqd){reqd=true;
-      s.requestReferenceSpace('viewer').then(vs=>s.requestHitTestSource({space:vs})).then(src=>hitSource=src)}
+    if(!hitSource&&!reqd&&!noHit){reqd=true;
+      s.requestReferenceSpace('viewer').then(vs=>s.requestHitTestSource({space:vs})).then(src=>hitSource=src).catch(()=>{noHit=true})}
     if(hitSource){const h=frame.getHitTestResults(hitSource);
       if(h.length){reticle.visible=true;reticle.matrix.fromArray(h[0].getPose(ref).transform.matrix);if(!placed&&++stable>25){onSelect();reticle.visible=false}}else{reticle.visible=false;if(!placed)stable=0}}
+    if(noHit&&!placed&&vp&&++stable>30){const o=vp.transform.orientation,q=new THREE.Quaternion(o.x,o.y,o.z,o.w),f=new THREE.Vector3(0,0,-1).applyQuaternion(q);f.y=0;f.normalize();const p=vp.transform.position;
+      skel.position.set(p.x+f.x*1.6,p.y-1.35,p.z+f.z*1.6);skel.rotation.y=Math.atan2(p.x-skel.position.x,p.z-skel.position.z);skel.visible=true;placed=true;hint.style.display='none'}
   }else{skel.rotation.y=t*0.0004}
   renderer.render(scene,camera);
 });
