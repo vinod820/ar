@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AR Skeleton</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#15151a">
+<style>
+:root{--bg:#f3f1ec;--fg:#1a1a1a;--btn:#1a1a1a;--btnfg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15151a;--fg:#f2f2f2;--btn:#f2f2f2;--btnfg:#15151a}}
+:root[data-theme="dark"]{--bg:#15151a;--fg:#f2f2f2;--btn:#f2f2f2;--btnfg:#15151a}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+canvas{display:block}
+#ui{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px));text-align:center}
+#start{background:var(--btn);color:var(--btnfg);border:0;border-radius:28px;padding:14px 32px;font-size:17px;font-weight:600}
+#msg{font-size:14px;opacity:.75;margin:10px 0 0}
+#hint{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;color:#fff;font-size:15px;text-shadow:0 1px 4px #000;display:none;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="ui"><button id="start">Tap to open camera</button><p id="msg"></p></div>
+<div id="hint">Point the camera at the floor...</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.01,20);
+camera.position.set(0,1.0,3.2);camera.lookAt(0,0.85,0);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(devicePixelRatio);renderer.setSize(innerWidth,innerHeight);
+renderer.xr.enabled=true;document.body.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x666666,0.9));
+const dl=new THREE.DirectionalLight(0xffffff,0.8);dl.position.set(1,3,2);scene.add(dl);
+
+// ---- Skeleton ----
+const boneMat=new THREE.MeshStandardMaterial({color:0xe8e2d0,roughness:0.7});
+const darkMat=new THREE.MeshStandardMaterial({color:0x151515,roughness:1});
+const skel=new THREE.Group();
+function J(p,r){const m=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),boneMat);m.position.set(...p);skel.add(m);return m}
+function B(a,b,r,j=true){
+  const A=new THREE.Vector3(...a),Bv=new THREE.Vector3(...b),d=Bv.clone().sub(A),len=d.length();
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,8),boneMat);
+  m.position.copy(A.clone().add(Bv).multiplyScalar(0.5));
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
+  skel.add(m);if(j){J(a,r*1.5);J(b,r*1.5)}
+}
+// skull
+const skull=new THREE.Mesh(new THREE.SphereGeometry(0.095,20,16),boneMat);skull.scale.set(0.95,1.05,1.1);skull.position.set(0,1.68,0.01);skel.add(skull);
+const jaw=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.05,0.09),boneMat);jaw.position.set(0,1.6,0.04);skel.add(jaw);
+[-1,1].forEach(s=>{const e=new THREE.Mesh(new THREE.SphereGeometry(0.024,10,8),darkMat);e.position.set(s*0.04,1.69,0.095);skel.add(e)});
+const nose=new THREE.Mesh(new THREE.ConeGeometry(0.012,0.035,6),darkMat);nose.position.set(0,1.655,0.103);nose.rotation.x=Math.PI;skel.add(nose);
+// spine
+for(let i=0;i<22;i++){const t=i/21;const y=0.98+t*0.6,z=-0.03+Math.sin(t*Math.PI)*0.015;
+  const v=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.022,0.022,8),boneMat);v.position.set(0,y,z);skel.add(v)}
+B([0,1.58,-0.03],[0,1.62,0],0.016,false);
+// ribs
+for(let i=0;i<8;i++){
+  const y=1.5-i*0.047,rad=0.1+Math.sin((i+1)/9*Math.PI)*0.05,arc=Math.PI*1.35;
+  const t=new THREE.Mesh(new THREE.TorusGeometry(rad,0.007,6,24,arc),boneMat);t.rotation.x=-Math.PI/2;
+  const g=new THREE.Group();g.add(t);g.rotation.y=-Math.PI/2-arc/2;
+  const o=new THREE.Group();o.add(g);o.scale.set(1.25,1,0.8);o.position.set(0,y,0.0);skel.add(o);
+}
+const stern=new THREE.Mesh(new THREE.BoxGeometry(0.035,0.2,0.012),boneMat);stern.position.set(0,1.38,0.095);skel.add(stern);
+// shoulders & arms
+B([-0.2,1.5,0.0],[0.2,1.5,0.0],0.011);
+[-1,1].forEach(s=>{
+  const sh=[s*0.2,1.5,0],el=[s*0.26,1.2,0.0],wr=[s*0.28,0.94,0.04];
+  B(sh,el,0.017);
+  B(el,wr,0.012,false);B([el[0]+s*0.015,el[1],el[2]],[wr[0]+s*0.012,wr[1],wr[2]],0.01);
+  for(let f=0;f<4;f++)B([wr[0]+s*(f-1.5)*0.012,wr[1],wr[2]],[wr[0]+s*(f-1.5)*0.014,wr[1]-0.08,wr[2]+0.01],0.004,false);
+  // legs
+  const hip=[s*0.09,0.9,0],kn=[s*0.1,0.48,0.02],an=[s*0.1,0.08,0];
+  B(hip,kn,0.021);B(kn,an,0.016);
+  const ft=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.04,0.2),boneMat);ft.position.set(s*0.1,0.03,0.07);skel.add(ft);
+  // pelvis wing
+  const pw=new THREE.Mesh(new THREE.SphereGeometry(0.1,14,10),boneMat);pw.scale.set(0.9,0.55,0.5);pw.position.set(s*0.085,0.97,0);skel.add(pw);
+});
+const sac=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8),boneMat);sac.scale.set(1,1.2,0.6);sac.position.set(0,0.95,-0.04);skel.add(sac);
+scene.add(skel);
+// ground shadow
+const shadow=new THREE.Mesh(new THREE.CircleGeometry(0.4,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.3}));
+shadow.position.y=0.002;skel.add(shadow);
+
+// ---- Reticle ----
+const reticle=new THREE.Mesh(new THREE.RingGeometry(0.12,0.15,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x00e5a0}));
+reticle.matrixAutoUpdate=false;reticle.visible=false;scene.add(reticle);
+
+// ---- AR session ----
+let hitSource=null,reqd=false,placed=false,session=null;
+const startBtn=document.getElementById('start'),msg=document.getElementById('msg'),hint=document.getElementById('hint');
+async function supported(){try{return !!(navigator.xr&&await navigator.xr.isSessionSupported('immersive-ar'))}catch(e){return false}}
+supported().then(ok=>{if(!ok){startBtn.style.display='none';msg.textContent='AR needs Chrome on an ARCore Android phone. Showing a 3D preview.'}});
+document.getElementById('ui').onclick=()=>startBtn.onclick();
+startBtn.onclick=async()=>{
+  try{
+    session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:document.body}});
+    await renderer.xr.setSession(session);
+    document.getElementById('ui').style.display='none';hint.style.display='block';
+    skel.visible=false;placed=false;
+    session.addEventListener('select',onSelect);stable=0;
+    session.addEventListener('end',()=>{hitSource=null;reqd=false;reticle.visible=false;skel.visible=true;skel.position.set(0,0,0);skel.rotation.y=0;
+      document.getElementById('ui').style.display='';hint.style.display='none'});
+  }catch(e){msg.textContent='Could not start AR: '+e.message}
+};
+let lastViewer=new THREE.Vector3();
+let stable=0;
+function onSelect(){
+  if(!reticle.visible)return;
+  const p=new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+  skel.position.copy(p);skel.rotation.y=Math.atan2(lastViewer.x-p.x,lastViewer.z-p.z);
+  skel.visible=true;placed=true;hint.style.display='none';
+}
+renderer.setAnimationLoop((t,frame)=>{
+  if(frame){
+    const ref=renderer.xr.getReferenceSpace(),s=renderer.xr.getSession();
+    const vp=frame.getViewerPose(ref);if(vp){const q=vp.transform.position;lastViewer.set(q.x,q.y,q.z)}
+    if(!hitSource&&!reqd){reqd=true;
+      s.requestReferenceSpace('viewer').then(vs=>s.requestHitTestSource({space:vs})).then(src=>hitSource=src)}
+    if(hitSource){const h=frame.getHitTestResults(hitSource);
+      if(h.length){reticle.visible=true;reticle.matrix.fromArray(h[0].getPose(ref).transform.matrix);if(!placed&&++stable>25){onSelect();reticle.visible=false}}else{reticle.visible=false;if(!placed)stable=0}}
+  }else{skel.rotation.y=t*0.0004}
+  renderer.render(scene,camera);
+});
+addEventListener('resize',()=>{if(renderer.xr.isPresenting)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script>
+<script>if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});</script>
+</body>
+</html>
